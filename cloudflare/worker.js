@@ -1,9 +1,3 @@
-const DEFAULT_TPLS = {
-  tpl_islamic: { name: "ইসলামিক গল্প (2D)", category: "Islamic", duration_sec: 60, style: "Golden & emerald 2D vector Islamic calligraphy", voice: "edge:v7_boy_islamic", emotion: "calm" },
-  tpl_cartoon: { name: "২ডি কার্টুন (Kids)", category: "Cartoon", duration_sec: 60, style: "Colorful 2D vector cartoon characters", voice: "edge:v12_girl_cartoon", emotion: "excited" },
-  tpl_3d_tech: { name: "৩ডি টেক মোশন", category: "3D Tech", duration_sec: 60, style: "Sleek 3D dark cyber neon cards", voice: "gemini:Puck", emotion: "normal" }
-};
-
 async function registerSlashCommands(env) {
   try {
     const commands = [
@@ -14,7 +8,7 @@ async function registerSlashCommands(env) {
       { command: "drives", description: "📁 Google Drive ম্যানেজার" },
       { command: "channels", description: "📺 কাস্টম চ্যানেল" },
       { command: "pending", description: "⏳ পেন্ডিং টাস্ক" },
-      { command: "emergency_reset", description: "🚨 ক্র্যাশ ক্লিয়ার ও রিস্টার্ট" },
+      { command: "emergency_reset", description: "🚨 ক্র্যাশ ক্লিয়ার" },
       { command: "restart", description: "🔄 বট রিস্টার্ট" }
     ];
     await fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/setMyCommands`, {
@@ -25,7 +19,7 @@ async function registerSlashCommands(env) {
 
 export default {
   async fetch(request, env) {
-    if (request.method !== "POST") return new Response("AI Studio Pro Full Backend Live");
+    if (request.method !== "POST") return new Response("AI Studio Pro Fixed Router Active");
     
     let update;
     try {
@@ -50,26 +44,27 @@ export default {
         try {
           const keysList = await env.STUDIO_DB.list();
           for (let k of keysList.keys) {
-            if (k.name.startsWith(`state_${uid}`) || k.name.startsWith("pending_") || k.name.startsWith("draft_")) {
+            if (k.name.startsWith(`state_${uid}`) || k.name.startsWith("pending_")) {
               await env.STUDIO_DB.delete(k.name);
             }
           }
         } catch(e) {}
-        await registerSlashCommands(env);
         await showMainMenu(env, chatId, uid);
       }
-      else if (data === "menu_vault") await showVaultMenu(env, chatId, uid);
+      else if (data === "menu_vault") {
+        await showVaultMenu(env, chatId, uid);
+      }
       else if (data === "add_key_gemini") {
         try {
-          await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_api_key", provider: "gemini" }), { expirationTtl: 600 });
+          await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_api_key" }), { expirationTtl: 600 });
         } catch(e) {}
-        await sendTG(env, chatId, "🟢 আপনার **Gemini API Key** পেস্ট করুন:", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
+        await sendTG(env, chatId, "🟢 আপনার **Gemini API Key** এখানে লিখে পাঠান:", [[{ text: "« ফিরে যান", callback_data: "menu_vault" }, { text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
       }
       else if (data === "menu_create_video") {
         try {
           await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_video_prompt" }), { expirationTtl: 900 });
         } catch(e) {}
-        await sendTG(env, chatId, "🎬 **নতুন AI ভিডিও জেনারেশন**\nবিষয় বা প্রম্পট লিখে পাঠান:", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
+        await sendTG(env, chatId, "🎬 **নতুন AI ভিডিও জেনারেশন**\nআপনার ভিডিওর টপিক বা প্রম্পট লিখে পাঠান:", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
       }
       else if (data === "menu_create_image") {
         try {
@@ -77,9 +72,15 @@ export default {
         } catch(e) {}
         await sendTG(env, chatId, "🖼️ **নতুন AI ইমেজ জেনারেশন**\nছবির বর্ণনা লিখে পাঠান:", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
       }
-      else if (data === "menu_drives") await showDrivesMenu(env, chatId, uid);
-      else if (data === "menu_channels") await showChannelsMenu(env, chatId, uid);
-      else if (data === "menu_pending") await showPendingTasks(env, chatId, uid);
+      else if (data === "menu_drives") {
+        await showDrivesMenu(env, chatId, uid);
+      }
+      else if (data === "menu_channels") {
+        await showChannelsMenu(env, chatId, uid);
+      }
+      else if (data === "menu_pending") {
+        await showPendingTasks(env, chatId, uid);
+      }
 
       return new Response("OK");
     }
@@ -90,21 +91,11 @@ export default {
     const chatId = msg.chat.id;
     const text = (msg.text || "").trim();
 
-    if (text === "/claim_admin") {
-      try {
-        await env.STUDIO_DB.put("super_admin_uid", uid);
-        await env.STUDIO_DB.put(`user_${uid}`, JSON.stringify({ role: "super_admin" }));
-      } catch(e) {}
-      await registerSlashCommands(env);
-      await showMainMenu(env, chatId, uid);
-      return new Response("OK");
-    }
-
     if (text === "/emergency_reset" || text === "/restart" || text === "/start" || text === "/cancel") {
       try {
         const keysList = await env.STUDIO_DB.list();
         for (let k of keysList.keys) {
-          if (k.name.startsWith(`state_${uid}`) || k.name.startsWith("pending_") || k.name.startsWith("draft_")) {
+          if (k.name.startsWith(`state_${uid}`) || k.name.startsWith("pending_")) {
             await env.STUDIO_DB.delete(k.name);
           }
         }
@@ -118,6 +109,16 @@ export default {
     if (text === "/drives") { await showDrivesMenu(env, chatId, uid); return new Response("OK"); }
     if (text === "/channels") { await showChannelsMenu(env, chatId, uid); return new Response("OK"); }
     if (text === "/pending") { await showPendingTasks(env, chatId, uid); return new Response("OK"); }
+    if (text === "/video") {
+      try { await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_video_prompt" }), { expirationTtl: 900 }); } catch(e) {}
+      await sendTG(env, chatId, "🎬 ভিডিওর টপিক লিখে পাঠান:", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
+      return new Response("OK");
+    }
+    if (text === "/image") {
+      try { await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_image_prompt" }), { expirationTtl: 900 }); } catch(e) {}
+      await sendTG(env, chatId, "🖼️ ছবির বর্ণনা লিখে পাঠান:", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
+      return new Response("OK");
+    }
 
     let stateRaw = null;
     try {
@@ -137,7 +138,7 @@ export default {
         try {
           await env.STUDIO_DB.put(`keys_${uid}`, JSON.stringify(myKeys));
         } catch(e) {}
-        await sendTG(env, chatId, "✅ Gemini API Key সফলভাবে ভল্টে সেভ হয়েছে!", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
+        await sendTG(env, chatId, "✅ Gemini API Key সফলভাবে ভল্টে সেভ হয়েছে!", [[{ text: "🔐 ভল্টে ফিরে যান", callback_data: "menu_vault" }, { text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
         return new Response("OK");
       }
       else if (state.mode === "awaiting_video_prompt") {
@@ -151,8 +152,13 @@ export default {
         try {
           await env.STUDIO_DB.put("pending_tasks", JSON.stringify(tasks));
         } catch(e) {}
-        await sendTG(env, chatId, `🎬 **ভিডিও জেনারেশন শুরু হয়েছে!**\n\nপেমেন্ট বা প্রম্পট: ${text}\nআইডি: ${taskId}`, [
-          [{ text: "⏳ পেন্ডিং টাস্ক দেখুন", callback_data: "menu_pending" }],
+        await sendTG(env, chatId, `🎬 **ভিডিও টাস্ক ক্রিয়েট হয়েছে!**\n\nবিষয়: ${text}\nআইডি: ${taskId}`, [
+          [{ text: "⏳ পেন্ডিং লিস্ট", callback_data: "menu_pending" }, { text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
+        ]);
+        return new Response("OK");
+      }
+      else if (state.mode === "awaiting_image_prompt") {
+        await sendTG(env, chatId, `🖼️ **ইমেজ রিকোয়েস্ট গৃহীত হয়েছে!**\n\nবর্ণনা: ${text}`, [
           [{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
         ]);
         return new Response("OK");
@@ -176,11 +182,15 @@ async function showVaultMenu(env, chatId, uid) {
 }
 
 async function showDrivesMenu(env, chatId, uid) {
-  await sendTG(env, chatId, "📁 **Google Drive ম্যানেজার**\nআপনার ড্রাইভ ইন্টিগ্রেশন সক্রিয় রয়েছে।", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
+  await sendTG(env, chatId, "📁 **Google Drive ম্যানেজার**\nআপনার ড্রাইভ কানেকশন সক্রিয় আছে।", [
+    [{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
+  ]);
 }
 
 async function showChannelsMenu(env, chatId, uid) {
-  await sendTG(env, chatId, "📺 **কাস্টম চ্যানেল ম্যানেজার**\nআপনার চ্যানেল লিস্ট এখানে দেখা যাবে।", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
+  await sendTG(env, chatId, "📺 **কাস্টম চ্যানেল ম্যানেজার**\nএখানে আপনার চ্যানেল কনফিগারেশন ম্যানেজ করতে পারবেন।", [
+    [{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
+  ]);
 }
 
 async function showPendingTasks(env, chatId, uid) {
@@ -189,9 +199,9 @@ async function showPendingTasks(env, chatId, uid) {
     tasks = JSON.parse((await env.STUDIO_DB.get("pending_tasks")) || "[]").filter(t => String(t.uid) === uid);
   } catch(e) {}
   
-  const btns = tasks.map(t => [{ text: `⚙️ ${t.topic.slice(0, 20)}`, callback_data: "noop" }]);
-  btns.push([{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]);
-  await sendTG(env, chatId, `⏳ **পেন্ডিং টাস্ক (${tasks.length}টি):**`, btns);
+  await sendTG(env, chatId, `⏳ **পেন্ডিং টাস্ক লিস্ট**\nমোট টাস্ক: ${tasks.length}টি`, [
+    [{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
+  ]);
 }
 
 async function showMainMenu(env, chatId, uid) {
