@@ -35,7 +35,7 @@ async function registerSlashCommands(env) {
     { command: "drives", description: "📁 Google Drive ম্যানেজার" },
     { command: "channels", description: "📺 কাস্টম চ্যানেল" },
     { command: "pending", description: "⏳ পেন্ডিং টাস্ক (Stop/Delete)" },
-    { command: "emergency_reset", description: "🚨 সব ক্র্যাশ ক্লিয়ার ও রিস্টার্ট" },
+    { command: "emergency_reset", description: "🚨 ক্র্যাশ ক্যান্সেল ও রিস্টার্ট" },
     { command: "backup", description: "💾 ব্যাকআপ JSON" },
     { command: "restart", description: "🔄 বট রিস্টার্ট" },
     { command: "claim_admin", description: "👑 Super Admin ক্লেইম" }
@@ -89,7 +89,6 @@ export default {
 
       if (data === "main_menu") await showMainMenu(env, chatId, uid);
       else if (data === "emergency_reset_btn" || data === "cmd_restart") {
-        // Hard Reset: Delete all pending tasks, drafts, and user states instantly
         const keysList = await env.STUDIO_DB.list();
         for (let k of keysList.keys) {
           if (k.name.startsWith(`state_${uid}`) || k.name.startsWith("pending_") || k.name.startsWith("draft_") || k.name === "pending_tasks") {
@@ -97,22 +96,22 @@ export default {
           }
         }
         await registerSlashCommands(env);
-        await sendTG(env, chatId, "🚨 **ইমারজেন্সি হার্ড রিসেট সফল!**\nসব হ্যাং হওয়া টাস্ক, ড্রাফট ও ক্যাশ মুছে ফেলা হয়েছে। বট সম্পূর্ণ সচল আছে।", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
+        await sendTG(env, chatId, "🚨 **ক্র্যাশ ক্লি ও ইমারজেন্সি রিস্টার্ট সফল!** সব হ্যাং হওয়া টাস্ক মুছে ফেলা হয়েছে।", [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
         await showMainMenu(env, chatId, uid);
       }
       else if (data === "menu_backup") await exportUserBackup(env, chatId, uid);
       else if (data === "menu_vault") await showVaultMenu(env, chatId, uid);
       else if (data === "add_key_gemini") {
         await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_api_key", provider: "gemini" }), { expirationTtl: 600 });
-        await sendTG(env, chatId, "🟢 আপনার **Gemini API Key** পেস্ট করুন:", [[{ text: "🚨 ইমারজেন্সি রিস্টার্ট", callback_data: "emergency_reset_btn" }]]);
+        await sendTG(env, chatId, "🟢 আপনার **Gemini API Key** পেস্ট করুন:", [[{ text: "🚨 ক্র্যাশ ক্লিয়ার", callback_data: "emergency_reset_btn" }]]);
       }
       else if (data === "menu_create_video") {
         await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_video_prompt" }), { expirationTtl: 900 });
-        await sendTG(env, chatId, "🎬 **নতুন AI ভিডিও**\nবিষয় বা প্রম্পট লিখে পাঠান:", [[{ text: "🚨 ইমারজেন্সি রিস্টার্ট", callback_data: "emergency_reset_btn" }]]);
+        await sendTG(env, chatId, "🎬 **নতুন AI ভিডিও**\nবিষয় বা প্রম্পট লিখে পাঠান:", [[{ text: "🚨 ক্র্যাশ ক্লিয়ার", callback_data: "emergency_reset_btn" }]]);
       }
       else if (data === "menu_create_image") {
         await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_image_prompt" }), { expirationTtl: 900 });
-        await sendTG(env, chatId, "🖼️ **নতুন AI ইমেজ**\nছবির বর্ণনা লিখে পাঠান:", [[{ text: "🚨 ইমারজেন্সি রিস্টার্ট", callback_data: "emergency_reset_btn" }]]);
+        await sendTG(env, chatId, "🖼️ **নতুন AI ইমেজ**\nছবির বর্ণনা লিখে পাঠান:", [[{ text: "🚨 ক্র্যাশ ক্লিয়ার", callback_data: "emergency_reset_btn" }]]);
       }
       else if (data === "menu_drives") await showDrivesMenu(env, chatId, uid);
       else if (data === "menu_channels") await showChannelsMenu(env, chatId, uid);
@@ -161,7 +160,7 @@ export default {
         }
       }
       await registerSlashCommands(env);
-      await sendTG(env, chatId, "🚨 **সফলভাবে হার্ড রিসেট করা হয়েছে!** সব ক্র্যাশ ক্লিয়ার।");
+      await sendTG(env, chatId, "🚨 **ক্র্যাশ ক্লিয়ার ও হার্ড রিসেট সফল!**");
       await showMainMenu(env, chatId, uid);
       return new Response("OK");
     }
@@ -187,7 +186,7 @@ async function showVaultMenu(env, chatId, uid) {
   const myKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
   await sendTG(env, chatId, `🔐 **API Key ভল্ট**\nGemini: ${myKeys.gemini.length}টি`, [
     [{ text: "➕ Gemini API Key যোগ করুন", callback_data: "add_key_gemini" }],
-    [{ text: "🚨 ইমারজেন্সি রিস্টার্ট (Crash Cancel)", callback_data: "emergency_reset_btn" }],
+    [{ text: "🚨 ক্র্যাশ ক্লিয়ার (Crash Cancel)", callback_data: "emergency_reset_btn" }],
     [{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
   ]);
 }
@@ -241,7 +240,7 @@ async function showMainMenu(env, chatId, uid) {
     [{ text: "🎬 নতুন AI ভিডিও", callback_data: "menu_create_video" }, { text: "🖼️ নতুন AI ইমেজ", callback_data: "menu_create_image" }],
     [{ text: "🎙️ ভয়েস স্টুডিও", callback_data: "menu_tts" }, { text: "🎨 টেমপ্লেট লাইব্রেরি", callback_data: "menu_templates:0" }],
     [{ text: `🔐 API Key (${myKeys.gemini.length})`, callback_data: "menu_vault" }, { text: "📁 Drive", callback_data: "menu_drives" }],
-    [{ text: "⏳ Pending Tasks", callback_data: "menu_pending" }, { text: "🚨 ইমারজেন্সি রিস্টার্ট", callback_data: "emergency_reset_btn" }],
+    [{ text: "⏳ Pending Tasks", callback_data: "menu_pending" }, { text: "🚨 ক্র্যাশ ক্লিয়ার", callback_data: "emergency_reset_btn" }],
     [{ text: "💾 ব্যাকআপ", callback_data: "menu_backup" }, { text: "🔄 Restart", callback_data: "cmd_restart" }]
   ]);
 }
