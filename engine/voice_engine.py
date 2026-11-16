@@ -1,5 +1,6 @@
 import os
 import asyncio
+import wave
 import edge_tts
 from google import genai
 from google.genai import types
@@ -32,22 +33,26 @@ async def _build_edge_audio(segments, preset_key, out_path):
         await comm.save(tmp)
         with open(tmp, "rb") as f:
             combined += f.read()
-        os.remove(tmp)
+        if os.path.exists(tmp):
+            os.remove(tmp)
     with open(out_path, "wb") as f:
         f.write(combined)
 
 def generate_voiceover(segments, voice_spec, user_gemini_keys, out_path="public/voice.mp3"):
-    os.makedirs("public", exist_ok=True)
-    engine, voice_name = voice_spec.split(":") if ":" in voice_spec else ("edge", "v2_boy_story")
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    engine, voice_name = voice_spec.split(":", 1) if ":" in voice_spec else ("edge", "v2_boy_story")
 
-    if engine == "gemini" and user_gemini_keys:
+    if engine == "gemini":
+        if not user_gemini_keys:
+            raise ValueError("Gemini ভয়েস ব্যবহার করতে আগে বটে Gemini API Key যোগ করুন!")
         full_text = " ".join([s["text"] for s in segments])
+        last_err = ""
         for key in user_gemini_keys:
             try:
-                client = genai.Client(api_key=key)
+                client = genai.Client(api_key=key.strip())
                 res = client.models.generate_content(
                     model="gemini-2.5-flash",
-                    contents=f"Read this Bengali script naturally with deep emotion: {full_text}",
+                    contents=f"Read this Bengali script naturally with clear pronunciation and emotion: {full_text}",
                     config=types.GenerateContentConfig(
                         response_modalities=["AUDIO"],
                         speech_config=types.SpeechConfig(
@@ -57,10 +62,26 @@ def generate_voiceover(segments, voice_spec, user_gemini_keys, out_path="public/
                         )
                     )
                 )
-                with open(out_path, "wb") as f:
-                    f.write(res.candidates[0].content.parts[0].inline_data.data)
+                part = res.candidates[0].content.parts[0]
+                raw_bytes = part.inline_data.data
+                mime = getattr(part.inline_data, "mime_type", "") or ""
+                if "pcm" in mime.lower() or "l16" in mime.lower():
+                    wav_tmp = out_path + ".wav"
+                    with wave.open(wav_tmp, "wb") as wf:
+                        wf.setnchannels(1)
+                        wf.setsampwidth(2)
+                        wf.setframerate(24000)
+                        wf.writeframes(raw_bytes)
+                    os.system(f"ffmpeg -y -i {wav_tmp} {out_path}")
+                    if os.path.exists(wav_tmp):
+                        os.remove(wav_tmp)
+                else:
+                    with open(out_path, "wb") as f:
+                        f.write(raw_bytes)
                 return
-            except Exception:
+            except Exception as e:
+                last_err = str(e)
                 continue
+        print(f"Gemini TTS fallback to Edge-TTS due to: {last_err}")
 
     asyncio.run(_build_edge_audio(segments, voice_name, out_path))

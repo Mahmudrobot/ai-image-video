@@ -1,4 +1,3 @@
-// AI Studio Pro V10 - Multi-Google Drive Manager (Named Drives + Smart 1-Drive Auto-Select + Per-Channel ON/OFF Toggle)
 const DEFAULT_TPLS = {
   tpl_islamic: { name: "ইসলামিক গল্প (2D)", duration_sec: 60, style: "Golden & emerald 2D vector Islamic calligraphy", voice: "edge:v2_boy_story", preview_file_id: null },
   tpl_cartoon: { name: "২ডি কার্টুন (Kids)", duration_sec: 60, style: "Colorful 2D vector cartoon characters", voice: "edge:v7_girl_cartoon", preview_file_id: null },
@@ -22,16 +21,18 @@ const GEMINI_VOICES_LIST = [
 async function registerSlashCommands(env) {
   const commands = [
     { command: "start", description: "🏠 মেইন কন্ট্রোল প্যানেল খুলুন" },
-    { command: "drives", description: "📁 একাধিক Google Drive যোগ ও ম্যানেজ করুন" },
-    { command: "channels", description: "📺 কাস্টম চ্যানেল, ভয়েস, টেমপ্লেট ও ড্রাইভ সেট" },
+    { command: "video", description: "🎬 নতুন AI ভিডিও তৈরি করুন" },
+    { command: "image", description: "🖼️ নতুন AI ইমেজ (ছবি) তৈরি করুন" },
+    { command: "tts", description: "🎙️ Text-to-Speech ও Voice Demo" },
+    { command: "vault", description: "🔐 Gemini ও Claude API Key যোগ/ম্যানেজ" },
+    { command: "drives", description: "📁 একাধিক Google Drive যোগ ও ম্যানেজ" },
+    { command: "channels", description: "📺 কাস্টম চ্যানেল, ভয়েস, টেমপ্লেট ও ড্রাইভ" },
     { command: "templates", description: "🎨 আনলিমিটেড টেমপ্লেট (Generate Again সহ)" },
-    { command: "tts", description: "🎙️ Text-to-Speech (Voice Note স্টুডিও)" },
     { command: "pending", description: "⏳ চলমান টাস্ক (Stop/Resume/Delete)" },
-    { command: "vault", description: "🔐 আনলিমিটেড API ভল্ট স্ট্যাটাস" },
-    { command: "backup", description: "💾 সম্পূর্ণ ডাটাবেজ ব্যাকআপ JSON ডাউনলোড" },
+    { command: "backup", description: "💾 সম্পূর্ণ ডাটাবেজ ব্যাকআপ JSON" },
     { command: "restart", description: "🔄 বট রিস্টার্ট ও মেনু রিফ্রেশ" },
     { command: "cancel", description: "❌ চলমান ইনপুট বাতিল করুন" },
-    { command: "help", description: "📖 সব ফাংশনের বর্ণনা ও কপি কমান্ড" },
+    { command: "help", description: "📖 সব ফাংশনের বর্ণনা" },
     { command: "claim_admin", description: "👑 প্রথমবার Super Admin ক্লেইম করুন" }
   ];
   await fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/setMyCommands`, {
@@ -41,7 +42,8 @@ async function registerSlashCommands(env) {
 
 export default {
   async fetch(request, env) {
-    if (request.method !== "POST") return new Response("AI Studio Pro V10 Online");
+    if (request.method !== "POST") return new Response("AI Studio Pro V11 Online");
+    const workerUrl = new URL(request.url).origin;
     const update = await request.json();
 
     if (update.internal_alert) {
@@ -49,8 +51,8 @@ export default {
       const alertId = "alt_" + Date.now();
       alerts.push({ id: alertId, chat_id: update.chat_id, message: update.message, last_sent: Date.now() });
       await env.STUDIO_DB.put("active_alerts", JSON.stringify(alerts));
-      await sendTG(env, update.chat_id, `🚨 **জরুরি সমস্যা!**\n\n${update.message}\n\n*(বাটনে ক্লিক না করা পর্যন্ত প্রতি ঘণ্টায় রিমাইন্ডার যাবে)*`, [
-        [{ text: "✅ ঠিক আছে, দেখেছি (Stop Reminder)", callback_data: `ack_alert:${alertId}` }]
+      await sendTG(env, update.chat_id, `🚨 **জরুরি সমস্যা!**\n\n${update.message}`, [
+        [{ text: "✅ ঠিক আছে, দেখেছি", callback_data: `ack_alert:${alertId}` }]
       ]);
       return new Response("ALERT_LOGGED");
     }
@@ -77,6 +79,10 @@ export default {
       const msgId = cq.message.message_id;
       const data = cq.data;
 
+      await fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/answerCallbackQuery`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ callback_query_id: cq.id })
+      });
+
       if (data === "menu_help") await sendHelpMenu(env, chatId);
       else if (data === "main_menu") await showMainMenu(env, chatId, uid);
       else if (data === "cmd_cancel") {
@@ -93,8 +99,57 @@ export default {
       else if (data === "menu_backup") {
         await exportUserBackup(env, chatId, uid);
       }
-
-      // ১. একাধিক Google Drive ম্যানেজার (নাম দিয়ে যোগ করা ও ডিলিট)
+      else if (data === "menu_vault") {
+        await showVaultMenu(env, chatId, uid);
+      }
+      else if (data === "add_key_gemini") {
+        await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_api_key", provider: "gemini" }), { expirationTtl: 600 });
+        await sendTG(env, chatId, "🟢 আপনার **Gemini API Key** (`AIzaSy...`) লিখে বা পেস্ট করে পাঠান:\n*(একাধিক Key দিতে চাইলে কমা দিয়ে পাঠাতে পারেন)*", [
+          [{ text: "❌ বাতিল করুন", callback_data: "cmd_cancel" }]
+        ]);
+      }
+      else if (data === "add_key_claude") {
+        await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_api_key", provider: "claude" }), { expirationTtl: 600 });
+        await sendTG(env, chatId, "🟣 আপনার **Claude API Key** (`sk-ant-...`) লিখে বা পেস্ট করে পাঠান:", [
+          [{ text: "❌ বাতিল করুন", callback_data: "cmd_cancel" }]
+        ]);
+      }
+      else if (data === "clear_keys_gemini" || data === "clear_keys_claude") {
+        const prov = data.endsWith("gemini") ? "gemini" : "claude";
+        let myKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+        myKeys[prov] = [];
+        await env.STUDIO_DB.put(`keys_${uid}`, JSON.stringify(myKeys));
+        await sendTG(env, chatId, `🗑️ সব ${prov.toUpperCase()} API Key মুছে ফেলা হয়েছে।`);
+        await showVaultMenu(env, chatId, uid);
+      }
+      else if (data === "menu_create_video") {
+        const userKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+        if ((userKeys.gemini || []).length === 0 && (userKeys.claude || []).length === 0) {
+          await sendTG(env, chatId, "⚠️ **আপনার কোনো API Key যোগ করা নেই!**\nভিডিও বা ইমেজ বানাতে আগে নিচের বাটনে চাপ দিয়ে একটি Gemini API Key যোগ করুন:", [
+            [{ text: "➕ এখনই Gemini API Key যোগ করুন", callback_data: "add_key_gemini" }],
+            [{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
+          ]);
+          return new Response("OK");
+        }
+        await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_video_prompt" }), { expirationTtl: 900 });
+        await sendTG(env, chatId, "🎬 **নতুন AI ভিডিও তৈরি করুন**\n\nআপনি কোন বিষয়ে ভিডিও বানাতে চান তা লিখে পাঠান (সাথে সময়ও লিখতে পারেন):\nযেমন: `সিলেটের চা বাগানের সৌন্দর্য নিয়ে ১ মিনিটের ভিডিও`", [
+          [{ text: "❌ বাতিল করুন", callback_data: "cmd_cancel" }]
+        ]);
+      }
+      else if (data === "menu_create_image") {
+        const userKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+        if ((userKeys.gemini || []).length === 0) {
+          await sendTG(env, chatId, "⚠️ **আপনার কোনো Gemini API Key যোগ করা নেই!**\nইমেজ বানাতে আগে নিচের বাটনে চাপ দিয়ে একটি Gemini API Key যোগ করুন:", [
+            [{ text: "➕ এখনই Gemini API Key যোগ করুন", callback_data: "add_key_gemini" }],
+            [{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
+          ]);
+          return new Response("OK");
+        }
+        await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_image_prompt" }), { expirationTtl: 900 });
+        await sendTG(env, chatId, "🖼️ **নতুন AI ইমেজ (ছবি) তৈরি করুন**\n\nআপনি কেমন ছবি বানাতে চান তা বর্ণনা করে পাঠান:\nযেমন: `A realistic golden sunset over Sylhet tea gardens, 4k ultra detailed`", [
+          [{ text: "❌ বাতিল করুন", callback_data: "cmd_cancel" }]
+        ]);
+      }
       else if (data === "menu_drives") {
         await showDrivesMenu(env, chatId, uid);
       }
@@ -110,8 +165,6 @@ export default {
         await sendTG(env, chatId, "🗑️ Google Drive-টি লিস্ট থেকে ডিলিট করা হয়েছে!");
         await showDrivesMenu(env, chatId, uid);
       }
-
-      // ২. কাস্টম চ্যানেল ম্যানেজার (Drive ON/OFF + Drive Selector + Voice + Multi-Templates)
       else if (data === "menu_channels") {
         await showChannelsMenu(env, chatId, uid);
       }
@@ -218,25 +271,55 @@ export default {
         await sendTG(env, chatId, "🗑️ চ্যানেলটি ডিলিট করা হয়েছে!");
         await showChannelsMenu(env, chatId, uid);
       }
-
-      // ৩. TTS স্টুডিও
       else if (data === "menu_tts") {
-        await sendTG(env, chatId, "🎙️ **Text-to-Speech (Voice Note স্টুডিও)**\nইঞ্জিন বেছে নিন:", [
-          [{ text: "🇧🇩 Bangla Edge-TTS (১০টি কণ্ঠ)", callback_data: "tts_list_edge" }],
+        await sendTG(env, chatId, "🎙️ **Text-to-Speech (Voice Note স্টুডিও)**\nইঞ্জিন বেছে নিন (প্রতিটি কণ্ঠের পাশে ডেমো শোনার বাটন আছে):", [
+          [{ text: "🇧🇩 Bangla Edge-TTS (১০টি ফ্রি কণ্ঠ)", callback_data: "tts_list_edge" }],
           [{ text: "✨ Gemini Pro Voices (Real AI)", callback_data: "tts_list_gemini" }],
           [{ text: "🔙 মেইন মেনু", callback_data: "main_menu" }]
         ]);
       }
       else if (data === "tts_list_edge" || data === "tts_list_gemini") {
+        if (data === "tts_list_gemini") {
+          const userKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+          if ((userKeys.gemini || []).length === 0) {
+            await sendTG(env, chatId, "⚠️ **Gemini Pro Voice ব্যবহার করতে আগে Gemini API Key যোগ করতে হবে!**\nনিচের বাটনে চাপ দিয়ে Key যোগ করুন অথবা Edge-TTS (ফ্রি) ব্যবহার করুন:", [
+              [{ text: "➕ এখনই Gemini API Key যোগ করুন", callback_data: "add_key_gemini" }],
+              [{ text: "🇧🇩 Bangla Edge-TTS (ফ্রি কণ্ঠ)", callback_data: "tts_list_edge" }],
+              [{ text: "🔙 পেছনে", callback_data: "menu_tts" }]
+            ]);
+            return new Response("OK");
+          }
+        }
         const list = data === "tts_list_edge" ? EDGE_VOICES_LIST : GEMINI_VOICES_LIST;
-        const btns = list.map(v => [{ text: v[1], callback_data: `tts_pick:${v[0]}` }]);
+        const btns = list.map(v => [
+          { text: v[1], callback_data: `tts_pick:${v[0]}` },
+          { text: "🎧 ডেমো শুনুন", callback_data: `tts_demo:${v[0]}` }
+        ]);
         btns.push([{ text: "🔙 পেছনে", callback_data: "menu_tts" }]);
-        await sendTG(env, chatId, "👇 কণ্ঠ সিলেক্ট করুন:", btns);
+        await sendTG(env, chatId, "👇 কণ্ঠ সিলেক্ট করুন অথবা **🎧 ডেমো শুনুন** বাটনে চাপ দিয়ে কণ্ঠটি পরীক্ষা করুন:", btns);
+      }
+      else if (data.startsWith("tts_demo:")) {
+        const vspec = data.replace("tts_demo:", "");
+        const userKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+        const demoText = "আসসালামু আলাইকুম! আমি আপনার এআই স্টুডিও প্রো ভয়েস অ্যাসিস্ট্যান্ট। আমার কণ্ঠটি কেমন লাগছে?";
+        const taskId = "demo_" + Date.now().toString().slice(-5);
+        await triggerGitHub(env, "execute", {
+          task_id: taskId,
+          job_mode: "tts_only",
+          tts_text: demoText,
+          voice_spec: vspec,
+          user_keys: userKeys,
+          chat_id: chatId,
+          is_demo: true
+        }, {}, workerUrl);
+        await sendTG(env, chatId, `🎧 **${vspec}**-এর ভয়েস ডেমো তৈরি হচ্ছে... ৩০-৪৫ সেকেন্ডের মধ্যে অডিও চলে আসবে!`);
       }
       else if (data.startsWith("tts_pick:")) {
         const vspec = data.replace("tts_pick:", "");
         await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_tts_text", voice_spec: vspec }), { expirationTtl: 900 });
-        await sendTG(env, chatId, `✅ কণ্ঠ সিলেক্ট হয়েছে: \`${vspec}\`\n\nএখন যে লেখাটি চ্যাট Voice Note বানাতে চান তা লিখে পাঠান:`);
+        await sendTG(env, chatId, `✅ কণ্ঠ সিলেক্ট হয়েছে: \`${vspec}\`\n\nএখন যে লেখাটি চ্যাট Voice Note বানাতে চান তা লিখে পাঠান:`, [
+          [{ text: "❌ বাতিল করুন", callback_data: "cmd_cancel" }]
+        ]);
       }
       else if (data.startsWith("get_tts_mp3:")) {
         const voiceFileId = cq.message.voice.file_id;
@@ -257,11 +340,18 @@ export default {
       }
       else if (data.startsWith("drv_voice:")) {
         const activeDrv = await resolveChannelDrive(env, uid, null);
-        await triggerGitHub(env, "save_to_drive", {}, { file_id: cq.message.voice.file_id, chat_id: chatId, file_name: `Voice_${msgId}.ogg`, drive_cfg: activeDrv });
+        await triggerGitHub(env, "save_to_drive", {}, { file_id: cq.message.voice.file_id, chat_id: chatId, file_name: `Voice_${msgId}.ogg`, drive_cfg: activeDrv }, workerUrl);
         await updateButtonStatus(env, chatId, msgId, cq.message.reply_markup.inline_keyboard, "drv_voice:", "📥 Saved to Drive ✅");
       }
-
-      // ৪. টেমপ্লেট লাইব্রেরি ও Generate Again
+      else if (data.startsWith("drv_photo:")) {
+        const photos = cq.message.photo || [];
+        const bestPhoto = photos[photos.length - 1];
+        if (bestPhoto) {
+          const activeDrv = await resolveChannelDrive(env, uid, null);
+          await triggerGitHub(env, "save_to_drive", {}, { file_id: bestPhoto.file_id, chat_id: chatId, file_name: `Image_${msgId}.png`, drive_cfg: activeDrv }, workerUrl);
+          await updateButtonStatus(env, chatId, msgId, cq.message.reply_markup.inline_keyboard, "drv_photo:", "📥 Saved to Drive ✅");
+        }
+      }
       else if (data.startsWith("menu_templates")) {
         const page = parseInt(data.split(":")[1] || "0");
         const tpls = await getUserTemplates(env, uid);
@@ -315,7 +405,7 @@ export default {
       }
       else if (data.startsWith("regen_run:")) {
         const [_, tplId, secStr] = data.split(":");
-        await startTemplateRegen(env, uid, chatId, tplId, parseInt(secStr));
+        await startTemplateRegen(env, uid, chatId, tplId, parseInt(secStr), workerUrl);
       }
       else if (data.startsWith("del_tpl:")) {
         const tplId = data.split(":")[1];
@@ -324,8 +414,6 @@ export default {
         await env.STUDIO_DB.put(`tpls_${uid}`, JSON.stringify(tpls));
         await sendTG(env, chatId, "🗑️ টেমপ্লেটটি ডিলিট করা হয়েছে!");
       }
-
-      // ৫. Pending Tasks
       else if (data === "menu_pending") await showPendingTasks(env, chatId, uid);
       else if (data.startsWith("task_stop:")) {
         const tid = data.split(":")[1];
@@ -341,7 +429,7 @@ export default {
         if (target) {
           target.status = "running";
           await env.STUDIO_DB.put("pending_tasks", JSON.stringify(tasks));
-          await triggerGitHub(env, "execute", target.payload);
+          await triggerGitHub(env, "execute", target.payload, {}, workerUrl);
           await sendTG(env, chatId, "▶️ টাস্কটি পুনরায় **Resume** করা হয়েছে!");
         }
       }
@@ -352,8 +440,6 @@ export default {
         await env.STUDIO_DB.put("pending_tasks", JSON.stringify(tasks));
         await sendTG(env, chatId, "🗑️ টাস্কটি ডিলিট করা হয়েছে!");
       }
-
-      // ৬. কনফার্মেশন থেকে চ্যানেল সিলেক্ট করে রেন্ডার শুরু
       else if (data.startsWith("confirm_job:")) {
         const [_, jobId, cid] = data.split(":");
         const draftRaw = await env.STUDIO_DB.get(`draft_${jobId}`);
@@ -388,14 +474,18 @@ export default {
         tasks.push({ id: taskId, uid: uid, topic: draft.topic, duration_sec: draft.duration_sec, status: "running", payload: payload });
         await env.STUDIO_DB.put("pending_tasks", JSON.stringify(tasks));
 
-        await triggerGitHub(env, "execute", payload);
-        await sendTG(env, chatId, `⚙️ **কাজটি চলছে...**\n📺 চ্যানেল: **${ch.name}**\n📁 Drive: **${ch.drive_enabled !== false ? activeDrive.name + " (ON ✅)" : "OFF ❌"}**\n🎨 টেমপ্লেট: **${chosenTpl.name}**`, [
+        const ghRes = await triggerGitHub(env, "execute", payload, {}, workerUrl);
+        if (!ghRes.ok) {
+          await sendTG(env, chatId, `❌ **GitHub Actions ট্রিগার হয়নি!**\nসমস্যা: \`${ghRes.error}\`\n*(Cloudflare-এ GH_USER, GH_REPO এবং GH_TOKEN চেক করুন)*`);
+          return new Response("OK");
+        }
+        await sendTG(env, chatId, `⚙️ **ভিডিও তৈরির কাজ শুরু হয়েছে!** (১-২ মিনিটের মধ্যে ভিডিও চলে আসবে)\n📺 চ্যানেল: **${ch.name}**\n📁 Drive: **${ch.drive_enabled !== false ? activeDrive.name + " (ON ✅)" : "OFF ❌"}**\n🎨 টেমপ্লেট: **${chosenTpl.name}**`, [
           [{ text: "⏳ Pending Tasks দেখুন", callback_data: "menu_pending" }]
         ]);
       }
       else if (data.startsWith("drv_save:")) {
         const activeDrive = await resolveChannelDrive(env, uid, null);
-        await triggerGitHub(env, "save_to_drive", {}, { file_id: cq.message.video.file_id, chat_id: chatId, file_name: `Video_${msgId}.mp4`, drive_cfg: activeDrive });
+        await triggerGitHub(env, "save_to_drive", {}, { file_id: cq.message.video.file_id, chat_id: chatId, file_name: `Video_${msgId}.mp4`, drive_cfg: activeDrive }, workerUrl);
         await updateButtonStatus(env, chatId, msgId, cq.message.reply_markup.inline_keyboard, "drv_save:", "📥 Saved to Drive ✅");
       }
       else if (data.startsWith("drv_skip:")) {
@@ -427,7 +517,6 @@ export default {
       return new Response("OK");
     }
 
-    // মেসেজ ও স্ল্যাশ (/) কমান্ড হ্যান্ডলার
     const msg = update.message;
     if (!msg) return new Response("OK");
     const uid = String(msg.from.id);
@@ -444,7 +533,7 @@ export default {
       await env.STUDIO_DB.put(`user_${uid}`, JSON.stringify({ role: "super_admin", daily_limit: 999999, used_today: 0, engine_mode: "only_gemini" }));
       await registerSlashCommands(env);
       await sendTG(env, chatId, `🎉 **অভিনন্দন! আপনি সফলভাবে Super Admin ক্লেইম করেছেন!**\n👑 Admin ID: \`${uid}\``, [
-        [{ text: "📁 Google Drive যোগ করুন", callback_data: "menu_drives" }],
+        [{ text: "🔐 Gemini API Key যোগ করুন", callback_data: "menu_vault" }],
         [{ text: "🏠 মেইন ড্যাশবোর্ড", callback_data: "main_menu" }]
       ]);
       return new Response("OK");
@@ -475,6 +564,17 @@ export default {
     if (text === "/channels") { await showChannelsMenu(env, chatId, uid); return new Response("OK"); }
     if (text === "/backup") { await exportUserBackup(env, chatId, uid); return new Response("OK"); }
     if (text === "/pending") { await showPendingTasks(env, chatId, uid); return new Response("OK"); }
+    if (text === "/vault") { await showVaultMenu(env, chatId, uid); return new Response("OK"); }
+    if (text === "/video") {
+      await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_video_prompt" }), { expirationTtl: 900 });
+      await sendTG(env, chatId, "🎬 **নতুন AI ভিডিও তৈরি করুন**\nআপনার ভিডিওর বিষয় বা প্রম্পট লিখে পাঠান:");
+      return new Response("OK");
+    }
+    if (text === "/image") {
+      await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_image_prompt" }), { expirationTtl: 900 });
+      await sendTG(env, chatId, "🖼️ **নতুন AI ইমেজ তৈরি করুন**\nআপনি কেমন ছবি বানাতে চান তা লিখে পাঠান:");
+      return new Response("OK");
+    }
     if (text === "/tts") {
       await sendTG(env, chatId, "🎙️ **Text-to-Speech (Voice Note স্টুডিও)**", [
         [{ text: "🇧🇩 Bangla Edge-TTS (১০টি কণ্ঠ)", callback_data: "tts_list_edge" }],
@@ -488,13 +588,7 @@ export default {
       await sendTG(env, chatId, `🎨 **টেমপ্লেট লাইব্রেরি** (মোট: ${Object.keys(tpls).length}টি):`, btns);
       return new Response("OK");
     }
-    if (text === "/vault") {
-      const myKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
-      await sendTG(env, chatId, `🔐 **API ভল্ট**\n🟢 Gemini: \`${(myKeys.gemini || []).length}টি\` | 🟣 Claude: \`${(myKeys.claude || []).length}টি\``);
-      return new Response("OK");
-    }
 
-    // ইনপুট স্টেট হ্যান্ডলার (মাল্টি-ড্রাইভ নাম -> ফোল্ডার ID -> JSON ক্রেডেনশিয়াল)
     const pendingVid = await env.STUDIO_DB.get(`pending_tpl_vid_${uid}`);
     if (pendingVid && text && !text.startsWith("/")) {
       let tpls = await getUserTemplates(env, uid);
@@ -511,13 +605,46 @@ export default {
       const state = JSON.parse(stateRaw);
       await env.STUDIO_DB.delete(`state_${uid}`);
 
-      // ধাপ ১: নতুন Google Drive-এর নাম নেওয়া
+      if (state.mode === "awaiting_api_key") {
+        const provider = state.provider || "gemini";
+        const list = text.split(/[,\s]+/).map(k => k.trim()).filter(Boolean);
+        let myKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+        myKeys[provider] = [...new Set([...(myKeys[provider] || []), ...list])];
+        await env.STUDIO_DB.put(`keys_${uid}`, JSON.stringify(myKeys));
+        await sendTG(env, chatId, `✅ সফলভাবে **${list.length}টি ${provider.toUpperCase()} API Key** সেভ হয়েছে! (মোট: **${myKeys[provider].length}টি**)`, [
+          [{ text: "🏠 মেইন মেনুতে যান", callback_data: "main_menu" }]
+        ]);
+        return new Response("OK");
+      }
+
+      if (state.mode === "awaiting_image_prompt") {
+        const userKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+        const taskId = "img_" + Date.now().toString().slice(-6);
+        const ghRes = await triggerGitHub(env, "execute", {
+          task_id: taskId,
+          job_mode: "image",
+          prompt: text,
+          user_keys: userKeys,
+          chat_id: chatId
+        }, {}, workerUrl);
+        if (!ghRes.ok) {
+          await sendTG(env, chatId, `❌ **GitHub Actions ট্রিগার হয়নি!**\nসমস্যা: \`${ghRes.error}\``);
+          return new Response("OK");
+        }
+        await sendTG(env, chatId, "🖼️ **AI ইমেজ তৈরি হচ্ছে...** ৩০-৪৫ সেকেন্ডের মধ্যে ছবি চলে আসবে!");
+        return new Response("OK");
+      }
+
+      if (state.mode === "awaiting_video_prompt") {
+        await promptChannelConfirmation(env, uid, chatId, text);
+        return new Response("OK");
+      }
+
       if (state.mode === "awaiting_drive_name") {
         await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_drive_folder", drive_name: text }), { expirationTtl: 600 });
         await sendTG(env, chatId, `📁 ড্রাইভের নাম: **${text}**\n\nএখন এই Google Drive-এর **Folder ID** পেস্ট করে পাঠান:`);
         return new Response("OK");
       }
-      // ধাপ ২: Google Drive Folder ID নেওয়া ও সেভ করা (১টি থাকলে অটো সব চ্যানেলে সিলেক্ট হবে)
       if (state.mode === "awaiting_drive_folder") {
         let drives = await getUserDrives(env, uid);
         const newDid = "drv_" + Date.now().toString().slice(-5);
@@ -552,9 +679,21 @@ export default {
       }
       if (state.mode === "awaiting_tts_text") {
         const userKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+        const taskId = "tts_" + Date.now().toString().slice(-6);
         await env.STUDIO_DB.put(`last_tts_text_${uid}`, text, { expirationTtl: 86400 });
-        await triggerGitHub(env, "execute", { job_mode: "tts_only", tts_text: text, voice_spec: state.voice_spec, user_keys: userKeys, chat_id: chatId });
-        await sendTG(env, chatId, "⚙️ **কাজটি চলছে...** ৩০ সেকেন্ডের মধ্যে চ্যাটে Voice Note চলে আসবে।");
+        const ghRes = await triggerGitHub(env, "execute", {
+          task_id: taskId,
+          job_mode: "tts_only",
+          tts_text: text,
+          voice_spec: state.voice_spec,
+          user_keys: userKeys,
+          chat_id: chatId
+        }, {}, workerUrl);
+        if (!ghRes.ok) {
+          await sendTG(env, chatId, `❌ **GitHub Actions ট্রিগার হয়নি!**\nসমস্যা: \`${ghRes.error}\`\n*(Cloudflare-এ GH_USER, GH_REPO এবং GH_TOKEN চেক করুন)*`);
+          return new Response("OK");
+        }
+        await sendTG(env, chatId, "⚙️ **ভয়েস তৈরির কাজ চলছে...** ৩০-৪৫ সেকেন্ডের মধ্যে চ্যাটে Voice Note চলে আসবে।");
         return new Response("OK");
       }
       if (state.mode === "awaiting_regen_dur") {
@@ -564,7 +703,7 @@ export default {
         if (m) sec = parseInt(m[1]) * 60;
         else if (s) sec = parseInt(s[1]);
         else if (!isNaN(parseInt(text))) sec = parseInt(text) * 60;
-        await startTemplateRegen(env, uid, chatId, state.tpl_id, sec);
+        await startTemplateRegen(env, uid, chatId, state.tpl_id, sec, workerUrl);
         return new Response("OK");
       }
     }
@@ -572,7 +711,7 @@ export default {
     if (text.startsWith("/addkey")) {
       const parts = text.split(/\s+/);
       if (parts.length < 3) {
-        await sendTG(env, chatId, "⚠️ সঠিক ফরম্যাট: `/addkey gemini AIzaSyKey1,AIzaSyKey2`");
+        await showVaultMenu(env, chatId, uid);
         return new Response("OK");
       }
       const provider = parts[1].toLowerCase();
@@ -598,26 +737,9 @@ export default {
       return new Response("OK");
     }
 
-    // কাস্টম প্রম্পট দিলে চ্যানেল সিলেক্ট করার বাটনসহ কনফার্মেশন কার্ড দেখাবে
     if ((text && !text.startsWith("/")) || msg.video || msg.photo || msg.voice) {
       const promptText = msg.caption || text || "কাস্টম ভিডিও প্রজেক্ট";
-      let durationSec = 60;
-      const minMatch = promptText.match(/(\d+)\s*(মিনিট|min)/i);
-      const secMatch = promptText.match(/(\d+)\s*(সেকেন্ড|sec)/i);
-      if (minMatch) durationSec = parseInt(minMatch[1]) * 60;
-      else if (secMatch) durationSec = parseInt(secMatch[1]);
-
-      const jobId = Date.now().toString().slice(-6);
-      await env.STUDIO_DB.put(`draft_${jobId}`, JSON.stringify({ topic: promptText, duration_sec: durationSec }), { expirationTtl: 1800 });
-
-      const channels = await getUserChannels(env, uid);
-      const chBtns = Object.keys(channels).map(cid => [{
-        text: `📺 ${channels[cid].name}-এর জন্য বানাও (${durationSec}s)`,
-        callback_data: `confirm_job:${jobId}:${cid}`
-      }]);
-      chBtns.push([{ text: "❌ বাতিল করুন (/cancel)", callback_data: "cmd_cancel" }]);
-
-      await sendTG(env, chatId, `🤔 **কোন চ্যানেলের সেটিংসে ভিডিওটি বানাবেন তা সিলেক্ট করুন:**\n\n📌 **বিষয়:** ${promptText}\n⏱️ **সময়:** ${durationSec} সেকেন্ড`, chBtns);
+      await promptChannelConfirmation(env, uid, chatId, promptText);
       return new Response("OK");
     }
 
@@ -627,7 +749,42 @@ export default {
   }
 };
 
-// মাল্টি-ড্রাইভ হেল্পার ফাংশনসমূহ
+async function showVaultMenu(env, chatId, uid) {
+  const myKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+  const gCount = (myKeys.gemini || []).length;
+  const cCount = (myKeys.claude || []).length;
+  const btns = [
+    [{ text: "➕ Gemini API Key যোগ করুন", callback_data: "add_key_gemini" }],
+    [{ text: "➕ Claude API Key যোগ করুন", callback_data: "add_key_claude" }],
+    [
+      { text: `🗑️ Gemini মুছুন (${gCount})`, callback_data: "clear_keys_gemini" },
+      { text: `🗑️ Claude মুছুন (${cCount})`, callback_data: "clear_keys_claude" }
+    ],
+    [{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]
+  ];
+  await sendTG(env, chatId, `🔐 **API Key ভল্ট স্ট্যাটাস**\n\n🟢 **Gemini API Keys:** \`${gCount}টি\` সেভ আছে\n🟣 **Claude API Keys:** \`${cCount}টি\` সেভ আছে\n\n*(নিচের বাটনে চাপ দিয়ে সরাসরি API Key পেস্ট করে সেভ করুন)*`, btns);
+}
+
+async function promptChannelConfirmation(env, uid, chatId, promptText) {
+  let durationSec = 60;
+  const minMatch = promptText.match(/(\d+)\s*(মিনিট|min)/i);
+  const secMatch = promptText.match(/(\d+)\s*(সেকেন্ড|sec)/i);
+  if (minMatch) durationSec = parseInt(minMatch[1]) * 60;
+  else if (secMatch) durationSec = parseInt(secMatch[1]);
+
+  const jobId = Date.now().toString().slice(-6);
+  await env.STUDIO_DB.put(`draft_${jobId}`, JSON.stringify({ topic: promptText, duration_sec: durationSec }), { expirationTtl: 1800 });
+
+  const channels = await getUserChannels(env, uid);
+  const chBtns = Object.keys(channels).map(cid => [{
+    text: `📺 ${channels[cid].name}-এর জন্য বানাও (${durationSec}s)`,
+    callback_data: `confirm_job:${jobId}:${cid}`
+  }]);
+  chBtns.push([{ text: "❌ বাতিল করুন (/cancel)", callback_data: "cmd_cancel" }]);
+
+  await sendTG(env, chatId, `🤔 **কোন চ্যানেলের সেটিংসে ভিডিওটি বানাবেন তা সিলেক্ট করুন:**\n\n📌 **বিষয়:** ${promptText}\n⏱️ **সময়:** ${durationSec} সেকেন্ড`, chBtns);
+}
+
 async function getUserDrives(env, uid) {
   return JSON.parse((await env.STUDIO_DB.get(`drives_${uid}`)) || "{}");
 }
@@ -711,31 +868,21 @@ async function exportUserBackup(env, chatId, uid) {
 }
 
 async function sendHelpMenu(env, chatId) {
-  const helpText = `📖 **AI Studio Pro V10 — ফাংশন বর্ণনা ও ওয়ান-ট্যাপ কপি কমান্ড**
-*(যেকোনো কমান্ডের ওপর টাচ করলেই কপি হয়ে যাবে)*
+  const helpText = `📖 **AI Studio Pro V11 — ফাংশন ও বাটন গাইড**
 
-👑 **১. Super Admin ক্লেইম:** \`/claim_admin\`
-🔄 **২. স্টার্ট, রিস্টার্ট ও বাতিল:** \`/start\` | \`/restart\` | \`/cancel\`
-📁 **৩. একাধিক Google Drive যোগ ও ম্যানেজ:** \`/drives\`
-📺 **৪. কাস্টম চ্যানেল (Drive ON/OFF, ভয়েস ও টেমপ্লেট):** \`/channels\`
-🎨 **৫. টেমপ্লেট লাইব্রেরি (Generate Again সহ):** \`/templates\`
-🎙️ **৬. চ্যাট Voice Note (TTS) স্টুডিও:** \`/tts\`
-⏳ **৭. চলমান টাস্ক (Stop/Resume/Delete):** \`/pending\`
-💾 **৮. সম্পূর্ণ ডাটাবেজ ব্যাকআপ ডাউনলোড:** \`/backup\`
-
-🔑 **৯. আনলিমিটেড API Key যোগ (কমা দিয়ে):**
-\`/addkey gemini AIzaSyKey1,AIzaSyKey2\`
-\`/addkey claude sk-ant-Key1,sk-ant-Key2\`
-
-👥 **১০. টিম মেম্বার তৈরি (Admin/Manager/User):**
-\`/adduser admin 123456789 9999\`
-\`/adduser manager 987654321 500\`
-\`/adduser user 555666777 100\``;
+🎬 **নতুন AI ভিডিও তৈরি:** বাটনে চাপ দিয়ে যেকোনো টপিক লিখলেই ভিডিও ও ভয়েস তৈরি হবে।
+🖼️ **নতুন AI ইমেজ তৈরি:** বাটনে চাপ দিয়ে ছবির বর্ণনা দিলেই ছবি তৈরি হবে।
+🎙️ **TTS ও Voice Demo:** প্রতিটি কণ্ঠের পাশে **🎧 ডেমো শুনুন** বাটন আছে।
+🔐 **API Key ভল্ট:** বাটনে চাপ দিয়ে সরাসরি Gemini / Claude API Key যোগ ও ডিলিট করা যায়।
+📁 **মাল্টি-Google Drive:** \`/drives\` — একাধিক ফোল্ডার ID যোগ ও ম্যানেজ।
+📺 **কাস্টম চ্যানেল:** \`/channels\` — চ্যানেল অনুযায়ী ভয়েস ও ড্রাইভ সেট।
+🎨 **টেমপ্লেট লাইব্রেরি:** \`/templates\` — টেমপ্লেট ম্যানেজ ও Generate Again।
+⏳ **Pending Tasks:** \`/pending\` — চলমান টাস্ক Stop/Resume/Delete।`;
 
   await sendTG(env, chatId, helpText, [[{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]]);
 }
 
-async function startTemplateRegen(env, uid, chatId, tplId, durationSec) {
+async function startTemplateRegen(env, uid, chatId, tplId, durationSec, workerUrl) {
   const tpls = await getUserTemplates(env, uid);
   const tpl = tpls[tplId];
   if (!tpl) return;
@@ -750,7 +897,7 @@ async function startTemplateRegen(env, uid, chatId, tplId, durationSec) {
     duration_sec: durationSec, template_style: tpl.style, voice_spec: tpl.voice,
     user_keys: userKeys, chat_id: chatId, auto_save_tpl_id: tplId, uid: uid
   };
-  await triggerGitHub(env, "execute", payload);
+  await triggerGitHub(env, "execute", payload, {}, workerUrl);
   await sendTG(env, chatId, `⚙️ **কাজটি চলছে...**\n🔄 টেমপ্লেট **'${tpl.name}'** নতুন করে **${durationSec} সেকেন্ড** হিসেবে তৈরি হয়ে এখানে স্থায়ীভাবে সেভ থাকবে!`);
 }
 
@@ -790,12 +937,34 @@ async function updateButtonStatus(env, chatId, msgId, keyboard, prefix, newLabel
   });
 }
 
-async function triggerGitHub(env, actionType, payloadObj = {}, extraObj = {}) {
-  await fetch(`https://api.github.com/repos/${env.GH_USER}/${env.GH_REPO}/actions/workflows/studio.yml/dispatches`, {
+async function triggerGitHub(env, actionType, payloadObj = {}, extraObj = {}, workerUrl = "") {
+  if (!env.GH_TOKEN || !env.GH_USER || !env.GH_REPO) {
+    return { ok: false, error: "Cloudflare-এ GH_TOKEN, GH_USER বা GH_REPO সেট করা নেই!" };
+  }
+  const enrichedPayload = { ...payloadObj, bot_token: env.TG_BOT_TOKEN, worker_url: workerUrl };
+  const enrichedExtra = { ...extraObj, bot_token: env.TG_BOT_TOKEN };
+  const res = await fetch(`https://api.github.com/repos/${env.GH_USER}/${env.GH_REPO}/actions/workflows/studio.yml/dispatches`, {
     method: "POST",
-    headers: { "Authorization": `Bearer ${env.GH_TOKEN}`, "Accept": "application/vnd.github.v3+json", "User-Agent": "CF-Worker" },
-    body: JSON.stringify({ ref: "main", inputs: { action_type: actionType, job_payload: JSON.stringify(payloadObj), extra_json: JSON.stringify(extraObj) } })
+    headers: {
+      "Authorization": `Bearer ${env.GH_TOKEN}`,
+      "Accept": "application/vnd.github.v3+json",
+      "User-Agent": "CF-Worker",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      ref: "main",
+      inputs: {
+        action_type: actionType,
+        job_payload: JSON.stringify(enrichedPayload),
+        extra_json: JSON.stringify(enrichedExtra)
+      }
+    })
   });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 120)}` };
+  }
+  return { ok: true };
 }
 
 async function sendTGDocument(env, chatId, filename, textContent) {
@@ -806,16 +975,24 @@ async function sendTGDocument(env, chatId, filename, textContent) {
 }
 
 async function showMainMenu(env, chatId, uid) {
+  const myKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
+  const gCount = (myKeys.gemini || []).length;
+  const cCount = (myKeys.claude || []).length;
   const btns = [
-    [{ text: "📁 মাল্টি-Google Drive ম্যানেজার (নাম দিয়ে যোগ)", callback_data: "menu_drives" }],
-    [{ text: "📺 কাস্টম চ্যানেল (Drive ON/OFF, ভয়েস ও টেমপ্লেট)", callback_data: "menu_channels" }],
-    [{ text: "🎨 আনলিমিটেড টেমপ্লেট (Generate Again সহ)", callback_data: "menu_templates:0" }],
-    [{ text: "🎙️ Text-to-Speech (Voice Note স্টুডিও)", callback_data: "menu_tts" }],
+    [
+      { text: "🎬 নতুন AI ভিডিও", callback_data: "menu_create_video" },
+      { text: "🖼️ নতুন AI ইমেজ", callback_data: "menu_create_image" }
+    ],
+    [{ text: "🎙️ Text-to-Speech ও Voice Demo স্টুডিও", callback_data: "menu_tts" }],
+    [{ text: `🔐 API Key ভল্ট (Gemini: ${gCount} | Claude: ${cCount})`, callback_data: "menu_vault" }],
+    [{ text: "📁 মাল্টি-Google Drive ম্যানেজার", callback_data: "menu_drives" }],
+    [{ text: "📺 কাস্টম চ্যানেল (Drive ON/OFF ও ভয়েস)", callback_data: "menu_channels" }],
+    [{ text: "🎨 আনলিমিটেড টেমপ্লেট (Generate Again)", callback_data: "menu_templates:0" }],
     [{ text: "⏳ Pending Tasks (Stop / Resume / Delete)", callback_data: "menu_pending" }],
-    [{ text: "💾 ব্যাকআপ JSON", callback_data: "menu_backup" }, { text: "📖 হেল্প কমান্ড", callback_data: "menu_help" }],
+    [{ text: "💾 ব্যাকআপ JSON", callback_data: "menu_backup" }, { text: "📖 হেল্প", callback_data: "menu_help" }],
     [{ text: "🔄 Restart", callback_data: "cmd_restart" }, { text: "❌ Cancel", callback_data: "cmd_cancel" }]
   ];
-  await sendTG(env, chatId, `🏢 **AI Studio Pro V10 — মাস্টার কন্ট্রোল প্যানেল**\n\n• নাম লিখে লিখে একাধিক **Google Drive** যোগ করুন এবং প্রতিটি চ্যানেলে আলাদা ড্রাইভ সিলেক্ট বা যেকোনো সময় **ON/OFF** করুন।`, btns);
+  await sendTG(env, chatId, `🏢 **AI Studio Pro V11 — মাস্টার কন্ট্রোল প্যানেল**\n\n• নিচের বাটন থেকে সরাসরি **ভিডিও, ইমেজ, ভয়েস ডেমো** এবং **API Key** নিয়ন্ত্রণ করুন।`, btns);
 }
 
 async function sendTG(env, chatId, text, inlineKeyboard = null) {
