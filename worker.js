@@ -49,11 +49,7 @@ export default {
       const alertId = "alt_" + Date.now();
       alerts.push({ id: alertId, chat_id: update.chat_id, message: update.message, last_sent: Date.now() });
       await env.STUDIO_DB.put("active_alerts", JSON.stringify(alerts));
-      await sendTG(env, update.chat_id, `🚨 **জরুরি সমস্যা!**
-
-${update.message}
-
-*(বাটনে ক্লিক না করা পর্যন্ত প্রতি ঘণ্টায় রিমাইন্ডার যাবে)*`, [
+      await sendTG(env, update.chat_id, `🚨 **জরুরি সমস্যা!**\n\n${update.message}\n\n*(বাটনে ক্লিক না করা পর্যন্ত প্রতি ঘণ্টায় রিমাইন্ডার যাবে)*`, [
         [{ text: "✅ ঠিক আছে, দেখেছি (Stop Reminder)", callback_data: `ack_alert:${alertId}` }]
       ]);
       return new Response("ALERT_LOGGED");
@@ -127,7 +123,6 @@ ${update.message}
         const cid = data.split(":")[1];
         await showSingleChannelConfig(env, chatId, uid, cid);
       }
-      // যেকোনো সময় চ্যানেলের Drive Upload ON বা OFF করা
       else if (data.startsWith("toggle_ch_drv:")) {
         const cid = data.split(":")[1];
         let channels = await getUserChannels(env, uid);
@@ -137,7 +132,6 @@ ${update.message}
           await showSingleChannelConfig(env, chatId, uid, cid);
         }
       }
-      // চ্যানেলের জন্য নির্দিষ্ট Google Drive সিলেক্ট করার মেনু
       else if (data.startsWith("ch_pick_drv_menu:")) {
         const cid = data.split(":")[1];
         const drives = await getUserDrives(env, uid);
@@ -233,21 +227,16 @@ ${update.message}
           [{ text: "🔙 মেইন মেনু", callback_data: "main_menu" }]
         ]);
       }
-
-      }
       else if (data === "tts_list_edge" || data === "tts_list_gemini") {
         const list = data === "tts_list_edge" ? EDGE_VOICES_LIST : GEMINI_VOICES_LIST;
         const btns = list.map(v => [{ text: v[1], callback_data: `tts_pick:${v[0]}` }]);
         btns.push([{ text: "🔙 পেছনে", callback_data: "menu_tts" }]);
         await sendTG(env, chatId, "👇 কণ্ঠ সিলেক্ট করুন:", btns);
       }
-
       else if (data.startsWith("tts_pick:")) {
         const vspec = data.replace("tts_pick:", "");
         await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_tts_text", voice_spec: vspec }), { expirationTtl: 900 });
-        await sendTG(env, chatId, `✅ কণ্ঠ সিলেক্ট হয়েছে: \`${vspec}\`
-
-এখন যে লেখাটি চ্যাট Voice Note বানাতে চান তা লিখে পাঠান:`);
+        await sendTG(env, chatId, `✅ কণ্ঠ সিলেক্ট হয়েছে: \`${vspec}\`\n\nএখন যে লেখাটি চ্যাট Voice Note বানাতে চান তা লিখে পাঠান:`);
       }
       else if (data.startsWith("get_tts_mp3:")) {
         const voiceFileId = cq.message.voice.file_id;
@@ -300,17 +289,14 @@ ${update.message}
           [{ text: "🗑️ টেমপ্লেট ডিলিট করো", callback_data: `del_tpl:${tplId}` }],
           [{ text: "🔙 টেমপ্লেট লিস্ট", callback_data: "menu_templates:0" }]
         ];
-        const cap = `🎨 **${tpl.name}**
-⏱️ সেভ করা সময়: **${Math.round(curSec / 60)} মিনিট (${curSec}s)**
-🎙️ ভয়েস: \`${tpl.voice}\``;
+        const cap = `🎨 **${tpl.name}**\n⏱️ সেভ করা সময়: **${Math.round(curSec / 60)} মিনিট (${curSec}s)**\n🎙️ ভয়েস: \`${tpl.voice}\``;
         if (tpl.preview_file_id) {
           await fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/sendVideo`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ chat_id: chatId, video: tpl.preview_file_id, caption: cap, parse_mode: "Markdown", reply_markup: { inline_keyboard: btns } })
           });
         } else {
-          await sendTG(env, chatId, cap + `
-📌 স্টাইল: ${tpl.style}`, btns);
+          await sendTG(env, chatId, cap + `\n📌 স্টাইল: ${tpl.style}`, btns);
         }
       }
       else if (data.startsWith("regen_tpl_menu:")) {
@@ -403,10 +389,7 @@ ${update.message}
         await env.STUDIO_DB.put("pending_tasks", JSON.stringify(tasks));
 
         await triggerGitHub(env, "execute", payload);
-        await sendTG(env, chatId, `⚙️ **কাজটি চলছে...**
-📺 চ্যানেল: **${ch.name}**
-📁 Drive: **${ch.drive_enabled !== false ? activeDrive.name + " (ON ✅)" : "OFF ❌"}**
-🎨 টেমপ্লেট: **${chosenTpl.name}**`, [
+        await sendTG(env, chatId, `⚙️ **কাজটি চলছে...**\n📺 চ্যানেল: **${ch.name}**\n📁 Drive: **${ch.drive_enabled !== false ? activeDrive.name + " (ON ✅)" : "OFF ❌"}**\n🎨 টেমপ্লেট: **${chosenTpl.name}**`, [
           [{ text: "⏳ Pending Tasks দেখুন", callback_data: "menu_pending" }]
         ]);
       }
@@ -444,8 +427,6 @@ ${update.message}
       return new Response("OK");
     }
 
-    const msg = update.message;
-
     // মেসেজ ও স্ল্যাশ (/) কমান্ড হ্যান্ডলার
     const msg = update.message;
     if (!msg) return new Response("OK");
@@ -462,8 +443,7 @@ ${update.message}
       await env.STUDIO_DB.put("super_admin_uid", uid);
       await env.STUDIO_DB.put(`user_${uid}`, JSON.stringify({ role: "super_admin", daily_limit: 999999, used_today: 0, engine_mode: "only_gemini" }));
       await registerSlashCommands(env);
-      await sendTG(env, chatId, `🎉 **অভিনন্দন! আপনি সফলভাবে Super Admin ক্লেইম করেছেন!**
-👑 Admin ID: \`${uid}\``, [
+      await sendTG(env, chatId, `🎉 **অভিনন্দন! আপনি সফলভাবে Super Admin ক্লেইম করেছেন!**\n👑 Admin ID: \`${uid}\``, [
         [{ text: "📁 Google Drive যোগ করুন", callback_data: "menu_drives" }],
         [{ text: "🏠 মেইন ড্যাশবোর্ড", callback_data: "main_menu" }]
       ]);
@@ -473,8 +453,7 @@ ${update.message}
     let profile = JSON.parse((await env.STUDIO_DB.get(`user_${uid}`)) || "null");
     if (!profile) {
       const adminUid = await env.STUDIO_DB.get("super_admin_uid");
-      await sendTG(env, chatId, !adminUid ? "👋 প্রথমে এডমিন হতে কমান্ড দিন:
-`/claim_admin`" : `⛔ অনুমোদিত নয়। আপনার ID: \`${uid}\``);
+      await sendTG(env, chatId, !adminUid ? "👋 প্রথমে এডমিন হতে কমান্ড দিন:\n`/claim_admin`" : `⛔ অনুমোদিত নয়। আপনার ID: \`${uid}\``);
       return new Response("OK");
     }
 
@@ -511,8 +490,7 @@ ${update.message}
     }
     if (text === "/vault") {
       const myKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
-      await sendTG(env, chatId, `🔐 **API ভল্ট**
-🟢 Gemini: \`${(myKeys.gemini || []).length}টি\` | 🟣 Claude: \`${(myKeys.claude || []).length}টি\``);
+      await sendTG(env, chatId, `🔐 **API ভল্ট**\n🟢 Gemini: \`${(myKeys.gemini || []).length}টি\` | 🟣 Claude: \`${(myKeys.claude || []).length}টি\``);
       return new Response("OK");
     }
 
@@ -536,9 +514,7 @@ ${update.message}
       // ধাপ ১: নতুন Google Drive-এর নাম নেওয়া
       if (state.mode === "awaiting_drive_name") {
         await env.STUDIO_DB.put(`state_${uid}`, JSON.stringify({ mode: "awaiting_drive_folder", drive_name: text }), { expirationTtl: 600 });
-        await sendTG(env, chatId, `📁 ড্রাইভের নাম: **${text}**
-
-এখন এই Google Drive-এর **Folder ID** পেস্ট করে পাঠান:`);
+        await sendTG(env, chatId, `📁 ড্রাইভের নাম: **${text}**\n\nএখন এই Google Drive-এর **Folder ID** পেস্ট করে পাঠান:`);
         return new Response("OK");
       }
       // ধাপ ২: Google Drive Folder ID নেওয়া ও সেভ করা (১টি থাকলে অটো সব চ্যানেলে সিলেক্ট হবে)
@@ -548,7 +524,6 @@ ${update.message}
         drives[newDid] = { name: state.drive_name, folder_id: text, creds_json: "" };
         await env.STUDIO_DB.put(`drives_${uid}`, JSON.stringify(drives));
 
-        // যদি এটি প্রথম ড্রাইভ হয় (মোট ১টি), তবে সব চ্যানেলে অটোমেটিক সিলেক্ট করে দেওয়া
         if (Object.keys(drives).length === 1) {
           let channels = await getUserChannels(env, uid);
           for (let cid of Object.keys(channels)) {
@@ -558,8 +533,7 @@ ${update.message}
           await env.STUDIO_DB.put(`channels_${uid}`, JSON.stringify(channels));
         }
 
-        await sendTG(env, chatId, `✅ Google Drive **'${state.drive_name}'** সফলভাবে যুক্ত হয়েছে!${Object.keys(drives).length === 1 ? "
-*(মাত্র ১টি ড্রাইভ থাকায় সব চ্যানেলে অটো-সিলেক্ট করা হয়েছে)*" : ""}`);
+        await sendTG(env, chatId, `✅ Google Drive **'${state.drive_name}'** সফলভাবে যুক্ত হয়েছে!${Object.keys(drives).length === 1 ? "\n*(মাত্র ১টি ড্রাইভ থাকায় সব চ্যানেলে অটো-সিলেক্ট করা হয়েছে)*" : ""}`);
         await showDrivesMenu(env, chatId, uid);
         return new Response("OK");
       }
@@ -595,8 +569,12 @@ ${update.message}
       }
     }
 
-    if (text.startsWith("/addkey ")) {
-      const parts = text.split(" ");
+    if (text.startsWith("/addkey")) {
+      const parts = text.split(/\s+/);
+      if (parts.length < 3) {
+        await sendTG(env, chatId, "⚠️ সঠিক ফরম্যাট: `/addkey gemini AIzaSyKey1,AIzaSyKey2`");
+        return new Response("OK");
+      }
       const provider = parts[1].toLowerCase();
       const list = parts.slice(2).join("").split(",").map(k => k.trim()).filter(Boolean);
       let myKeys = JSON.parse((await env.STUDIO_DB.get(`keys_${uid}`)) || '{"gemini":[],"claude":[]}');
@@ -606,8 +584,13 @@ ${update.message}
       return new Response("OK");
     }
 
-    if (text.startsWith("/adduser ")) {
-      const [_, role, targetId, lim] = text.split(" ");
+    if (text.startsWith("/adduser")) {
+      const parts = text.split(/\s+/);
+      if (parts.length < 3) {
+        await sendTG(env, chatId, "⚠️ সঠিক ফরম্যাট: `/adduser admin 123456789 9999`");
+        return new Response("OK");
+      }
+      const [_, role, targetId, lim] = parts;
       const ok = (profile.role === "super_admin") || (profile.role === "admin" && ["manager", "user"].includes(role)) || (profile.role === "manager" && role === "user");
       if (!ok) { await sendTG(env, chatId, "❌ পারমিশন নেই!"); return new Response("OK"); }
       await env.STUDIO_DB.put(`user_${targetId}`, JSON.stringify({ role, daily_limit: parseInt(lim || "9999"), used_today: 0, engine_mode: "only_gemini", parent: uid }));
@@ -634,10 +617,7 @@ ${update.message}
       }]);
       chBtns.push([{ text: "❌ বাতিল করুন (/cancel)", callback_data: "cmd_cancel" }]);
 
-      await sendTG(env, chatId, `🤔 **কোন চ্যানেলের সেটিংসে ভিডিওটি বানাবেন তা সিলেক্ট করুন:**
-
-📌 **বিষয়:** ${promptText}
-⏱️ **সময়:** ${durationSec} সেকেন্ড`, chBtns);
+      await sendTG(env, chatId, `🤔 **কোন চ্যানেলের সেটিংসে ভিডিওটি বানাবেন তা সিলেক্ট করুন:**\n\n📌 **বিষয়:** ${promptText}\n⏱️ **সময়:** ${durationSec} সেকেন্ড`, chBtns);
       return new Response("OK");
     }
 
@@ -671,10 +651,8 @@ async function showDrivesMenu(env, chatId, uid) {
   btns.push([{ text: "➕ নতুন Google Drive যোগ করুন (নাম দিয়ে)", callback_data: "add_drive_btn" }]);
   btns.push([{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]);
 
-  const note = dKeys.length === 1 ? "
-*(মাত্র ১টি ড্রাইভ থাকায় এটি সব চ্যানেলে অটো-সিলেক্ট হয়ে আছে)*" : "";
-  await sendTG(env, chatId, `📁 **মাল্টি-Google Drive ম্যানেজার (মোট: ${dKeys.length}টি)**${note}
-যত খুশি তত Google Drive নাম লিখে যোগ করুন এবং প্রতিটি চ্যানেলে আলাদা সিলেক্ট করুন:`, btns);
+  const note = dKeys.length === 1 ? "\n*(মাত্র ১টি ড্রাইভ থাকায় এটি সব চ্যানেলে অটো-সিলেক্ট হয়ে আছে)*" : "";
+  await sendTG(env, chatId, `📁 **মাল্টি-Google Drive ম্যানেজার (মোট: ${dKeys.length}টি)**${note}\nযত খুশি তত Google Drive নাম লিখে যোগ করুন এবং প্রতিটি চ্যানেলে আলাদা সিলেক্ট করুন:`, btns);
 }
 
 async function getUserChannels(env, uid) {
@@ -697,8 +675,7 @@ async function showChannelsMenu(env, chatId, uid) {
   });
   btns.push([{ text: "➕ নতুন কাস্টম চ্যানেল যোগ করুন", callback_data: "add_channel_btn" }]);
   btns.push([{ text: "🏠 মেইন মেনু", callback_data: "main_menu" }]);
-  await sendTG(env, chatId, "📺 **কাস্টম চ্যানেল ম্যানেজার**
-যেকোনো চ্যানেলে ঢুকে Google Drive পরিবর্তন বা ON/OFF, ভয়েস ও টেমপ্লেট সেট করুন:", btns);
+  await sendTG(env, chatId, "📺 **কাস্টম চ্যানেল ম্যানেজার**\nযেকোনো চ্যানেলে ঢুকে Google Drive পরিবর্তন বা ON/OFF, ভয়েস ও টেমপ্লেট সেট করুন:", btns);
 }
 
 async function showSingleChannelConfig(env, chatId, uid, cid) {
@@ -717,10 +694,7 @@ async function showSingleChannelConfig(env, chatId, uid, cid) {
     [{ text: "🗑️ চ্যানেলটি ডিলিট করুন", callback_data: `del_ch:${cid}` }],
     [{ text: "🔙 সব চ্যানেল", callback_data: "menu_channels" }]
   ];
-  await sendTG(env, chatId, `⚙️ **চ্যানেল সেটিংস: ${ch.name}**
-• Drive স্ট্যাটাস: **${isDrvOn ? "ON ✅" : "OFF ❌"}**
-• নির্ধারিত ড্রাইভ: **${activeDrv.name}**
-• ভয়েস: \`${ch.voice}\``, btns);
+  await sendTG(env, chatId, `⚙️ **চ্যানেল সেটিংস: ${ch.name}**\n• Drive স্ট্যাটাস: **${isDrvOn ? "ON ✅" : "OFF ❌"}**\n• নির্ধারিত ড্রাইভ: **${activeDrv.name}**\n• ভয়েস: \`${ch.voice}\``, btns);
 }
 
 async function exportUserBackup(env, chatId, uid) {
@@ -777,8 +751,7 @@ async function startTemplateRegen(env, uid, chatId, tplId, durationSec) {
     user_keys: userKeys, chat_id: chatId, auto_save_tpl_id: tplId, uid: uid
   };
   await triggerGitHub(env, "execute", payload);
-  await sendTG(env, chatId, `⚙️ **কাজটি চলছে...**
-🔄 টেমপ্লেট **'${tpl.name}'** নতুন করে **${durationSec} সেকেন্ড** হিসেবে তৈরি হয়ে এখানে স্থায়ীভাবে সেভ থাকবে!`);
+  await sendTG(env, chatId, `⚙️ **কাজটি চলছে...**\n🔄 টেমপ্লেট **'${tpl.name}'** নতুন করে **${durationSec} সেকেন্ড** হিসেবে তৈরি হয়ে এখানে স্থায়ীভাবে সেভ থাকবে!`);
 }
 
 async function showPendingTasks(env, chatId, uid) {
@@ -842,9 +815,7 @@ async function showMainMenu(env, chatId, uid) {
     [{ text: "💾 ব্যাকআপ JSON", callback_data: "menu_backup" }, { text: "📖 হেল্প কমান্ড", callback_data: "menu_help" }],
     [{ text: "🔄 Restart", callback_data: "cmd_restart" }, { text: "❌ Cancel", callback_data: "cmd_cancel" }]
   ];
-  await sendTG(env, chatId, `🏢 **AI Studio Pro V10 — মাস্টার কন্ট্রোল প্যানেল**
-
-• নাম লিখে লিখে একাধিক **Google Drive** যোগ করুন এবং প্রতিটি চ্যানেলে আলাদা ড্রাইভ সিলেক্ট বা যেকোনো সময় **ON/OFF** করুন।`, btns);
+  await sendTG(env, chatId, `🏢 **AI Studio Pro V10 — মাস্টার কন্ট্রোল প্যানেল**\n\n• নাম লিখে লিখে একাধিক **Google Drive** যোগ করুন এবং প্রতিটি চ্যানেলে আলাদা ড্রাইভ সিলেক্ট বা যেকোনো সময় **ON/OFF** করুন।`, btns);
 }
 
 async function sendTG(env, chatId, text, inlineKeyboard = null) {
