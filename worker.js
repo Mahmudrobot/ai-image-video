@@ -225,13 +225,15 @@ ${update.message}
         await showChannelsMenu(env, chatId, uid);
       }
 
-            // ৩. TTS স্টুডিও
+      // ৩. TTS স্টুডিও
       else if (data === "menu_tts") {
         await sendTG(env, chatId, "🎙️ **Text-to-Speech (Voice Note স্টুডিও)**\nইঞ্জিন বেছে নিন:", [
           [{ text: "🇧🇩 Bangla Edge-TTS (১০টি কণ্ঠ)", callback_data: "tts_list_edge" }],
           [{ text: "✨ Gemini Pro Voices (Real AI)", callback_data: "tts_list_gemini" }],
           [{ text: "🔙 মেইন মেনু", callback_data: "main_menu" }]
         ]);
+      }
+
       }
       else if (data === "tts_list_edge" || data === "tts_list_gemini") {
         const list = data === "tts_list_edge" ? EDGE_VOICES_LIST : GEMINI_VOICES_LIST;
