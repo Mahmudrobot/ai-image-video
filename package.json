@@ -1,0 +1,16 @@
+{
+  "name": "ai-studio-pro-v10",
+  "version": "10.0.0",
+  "scripts": {
+    "render": "npx remotion render src/index.ts MyVideo out.mp4"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.200",
+    "@remotion/cli": "^4.0.200",
+    "@remotion/transitions": "^4.0.200",
+    "@remotion/three": "^4.0.200",
+    "three": "^0.168.0"
+  }
+}

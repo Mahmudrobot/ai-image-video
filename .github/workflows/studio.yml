@@ -1,0 +1,135 @@
+name: AI Studio Pro V10 Factory
+on:
+  workflow_dispatch:
+    inputs:
+      job_payload:
+        required: true
+      action_type:
+        default: 'execute'
+      extra_json:
+        default: '{}'
+
+jobs:
+  studio-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          npm install
+
+      - name: Execute Real Engine & Multi-Drive Delivery
+        if: github.event.inputs.action_type == 'execute'
+        env:
+          JOB_PAYLOAD: ${{ github.event.inputs.job_payload }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          WORKER_PUBLIC_URL: ${{ secrets.WORKER_PUBLIC_URL }}
+        run: |
+          python engine/main.py
+          MODE=$(python -c 'import json; print(json.load(open("job_meta.json"))["job_mode"])')
+          if [ "$MODE" = "video" ]; then
+            npx remotion render src/index.ts MyVideo full_out.mp4 --concurrency=2
+            npx remotion render src/index.ts MyShort short_out.mp4 --concurrency=2
+          else
+            ffmpeg -y -i tts_output.mp3 -c:a libopus -b:a 64k tts_voice.ogg
+          fi
+          python -c '
+          import os, json, requests
+          from engine.uploader import check_drive_quota_and_upload, post_to_social_safe
+
+          meta = json.load(open("job_meta.json", encoding="utf-8"))
+          bot_token = os.environ["TG_BOT_TOKEN"]
+          chat_id = meta["chat_id"]
+          worker_url = os.environ.get("WORKER_PUBLIC_URL", "")
+
+          drive_cfg = meta.get("drive_cfg", {})
+          target_folder = drive_cfg.get("folder_id") or os.environ.get("GDRIVE_FOLDER_ID")
+          target_creds = drive_cfg.get("creds_json") or os.environ.get("GDRIVE_CREDENTIALS")
+          drive_name = drive_cfg.get("name", "Default Drive")
+
+          def trigger_hourly_alert(alert_msg):
+              if worker_url:
+                  requests.post(worker_url, json={"internal_alert": True, "chat_id": chat_id, "message": alert_msg})
+              else:
+                  requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={"chat_id": chat_id, "text": alert_msg})
+
+          if meta["job_mode"] == "tts_only":
+              with open("tts_voice.ogg", "rb") as f:
+                  res = requests.post(f"https://api.telegram.org/bot{bot_token}/sendVoice", data={"chat_id": chat_id, "caption": f"🎙️ ভয়েস নোট ({meta["voice_spec"]}) — চ্যাটেই প্লে করুন:"}, files={"voice": f}).json()
+              msg_id = res["result"]["message_id"]
+              kb = {
+                  "inline_keyboard": [
+                      [{"text": "🎵 Download MP3", "callback_data": f"get_tts_mp3:{msg_id}"}, {"text": "📥 Save to Drive", "callback_data": f"drv_voice:{msg_id}"}],
+                      [{"text": "📄 Download JSON", "callback_data": f"get_tts_json:{msg_id}"}, {"text": "📝 Download SRT", "callback_data": f"get_tts_srt:{msg_id}"}],
+                      [{"text": "🗑️ Delete Now", "callback_data": f"del_now:{msg_id}"}]
+                  ]
+              }
+              requests.post(f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup", json={"chat_id": chat_id, "message_id": msg_id, "reply_markup": kb})
+          else:
+              # চ্যানেলের Drive ON থাকলে তবেই অটো-আপলোড হবে
+              if meta.get("is_auto_sched") and meta.get("drive_enabled", True):
+                  r1 = check_drive_quota_and_upload(target_creds, target_folder, "full_out.mp4", f"FULL_{meta["title"][:25]}.mp4", drive_name)
+                  r2 = check_drive_quota_and_upload(target_creds, target_folder, "short_out.mp4", f"SHORT_{meta["title"][:25]}.mp4", drive_name)
+                  if not r1["ok"]:
+                      trigger_hourly_alert(r1["error"])
+                  elif r1.get("warning"):
+                      trigger_hourly_alert(r1["warning"])
+
+              if meta.get("is_auto_sched"):
+                  soc_errs = post_to_social_safe(meta.get("channel_cfg", {}), "full_out.mp4", meta["title"], meta["description"], meta.get("tags", []))
+                  for err in soc_errs:
+                      trigger_hourly_alert(err)
+
+              with open("full_out.mp4", "rb") as f:
+                  res = requests.post(f"https://api.telegram.org/bot{bot_token}/sendVideo", data={"chat_id": chat_id, "caption": f"🎬 {meta["title"]} ({meta["duration_sec"]}s)\n📁 Target Drive: {drive_name}"}, files={"video": f}).json()
+              msg_id = res["result"]["message_id"]
+              vid_file_id = res["result"]["video"]["file_id"]
+
+              kb = {
+                  "inline_keyboard": [
+                      [{"text": f"📥 Save to {drive_name}", "callback_data": f"drv_save:{msg_id}"}, {"text": "🚫 Keep in TG Only", "callback_data": f"drv_skip:{msg_id}"}],
+                      [{"text": "⏳ Auto-Del 24h", "callback_data": f"del_24h:{msg_id}"}, {"text": "🗑️ Delete Now", "callback_data": f"del_now:{msg_id}"}],
+                      [{"text": "⭐ Save as Master Template", "callback_data": f"save_tpl:{msg_id}"}]
+                  ]
+              }
+              requests.post(f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup", json={"chat_id": chat_id, "message_id": msg_id, "reply_markup": kb})
+
+              if meta.get("auto_save_tpl_id") and worker_url:
+                  requests.post(worker_url, json={"internal_tpl_update": True, "uid": meta["uid"], "tpl_id": meta["auto_save_tpl_id"], "file_id": vid_file_id, "duration_sec": meta["duration_sec"]})
+
+              if worker_url:
+                  requests.post(worker_url, json={"internal_complete": True, "task_id": meta["task_id"]})
+          '
+
+      - name: Upload Approved Media to Selected Google Drive
+        if: github.event.inputs.action_type == 'save_to_drive'
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          EXTRA_JSON: ${{ github.event.inputs.extra_json }}
+        run: |
+          python -c '
+          import os, json, requests
+          from engine.main import download_tg_file
+          from engine.uploader import check_drive_quota_and_upload
+          info = json.loads(os.environ["EXTRA_JSON"])
+          drive_cfg = info.get("drive_cfg", {})
+          folder = drive_cfg.get("folder_id") or os.environ["GDRIVE_FOLDER_ID"]
+          creds = drive_cfg.get("creds_json") or os.environ["GDRIVE_CREDENTIALS"]
+          dname = drive_cfg.get("name", "Default Drive")
+          local_f = download_tg_file(os.environ["TG_BOT_TOKEN"], info["file_id"], info["file_name"])
+          res = check_drive_quota_and_upload(creds, folder, local_f, info["file_name"], dname)
+          msg = f"✅ [{dname}] ফোল্ডারে সেভ সম্পন্ন হয়েছে!" if res["ok"] else f"❌ {res["error"]}"
+          requests.post(f"https://api.telegram.org/bot{os.environ["TG_BOT_TOKEN"]}/sendMessage", json={"chat_id": info["chat_id"], "text": msg})
+          '
