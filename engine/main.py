@@ -101,7 +101,7 @@ def run():
             raw_text = payload.get("tts_text", "")
             sentences = [s.strip() for s in raw_text.replace("।", "|").replace(".", "|").split("|") if s.strip()] or [raw_text]
             segments = [{"text": s, "emotion": "normal"} for s in sentences]
-            generate_voiceover(segments, voice_spec, user_keys.get("gemini", []), "tts_output.mp3")
+            generate_voiceover(segments, voice_spec, user_keys.get("gemini", []), "tts_output.mp3", emotion=payload.get("emotion", "normal"), speaker_voices=payload.get("speaker_voices"))
             with open("job_meta.json", "w", encoding="utf-8") as f:
                 json.dump({
                     "task_id": task_id,
@@ -147,6 +147,8 @@ def run():
         Full Video Duration: {duration_sec} seconds ({total_frames} frames at 30 FPS, 1280x720).
         Short Video Duration: 45 seconds ({short_frames} frames at 30 FPS, 720x1280 vertical).
         Target Bengali Script Length: ~{target_words} words.
+        Speaker Mode: {len(payload.get("speaker_voices") or [1])} speaker(s) dialogue (include speaker_idx: 0, 1, or 2 in each segment).
+        Speaker Mode: {len(payload.get("speaker_voices") or [1])} speaker(s) dialogue (include speaker_idx: 0, 1, or 2 in each segment).
         Visual Style: {style}
         Cloned Reference Blueprint: {cloned_style}
         Return ONLY valid JSON:
@@ -162,7 +164,7 @@ def run():
         raw = generate_script_and_code(prompt, user_keys, engine_mode)
         data = json.loads(raw)
 
-        generate_voiceover(data["segments"], voice_spec, user_keys.get("gemini", []), "public/voice.mp3")
+        generate_voiceover(data["segments"], voice_spec, user_keys.get("gemini", []), "public/voice.mp3", emotion=payload.get("emotion", "normal"), speaker_voices=payload.get("speaker_voices"))
         os.makedirs("src", exist_ok=True)
         tsx_code = data.get("tsx_code", "")
         if "MyVideo" not in tsx_code or "Composition" not in tsx_code:
