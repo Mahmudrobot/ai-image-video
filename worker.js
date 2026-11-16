@@ -444,6 +444,8 @@ ${update.message}
       return new Response("OK");
     }
 
+    const msg = update.message;
+
     // মেসেজ ও স্ল্যাশ (/) কমান্ড হ্যান্ডলার
     const msg = update.message;
     if (!msg) return new Response("OK");
